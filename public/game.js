@@ -1,21 +1,29 @@
+/* global rough */
+
 var rootElement = document.getElementById("root");
-var CANVAS_WIDTH = 500;
-var CANVAS_HEIGHT = 500;
+var CANVAS_WIDTH = 800;
+var CANVAS_HEIGHT = 600;
 
 var canvas = document.createElement("canvas");
-var ctx = canvas.getContext("2d");
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
+
+var ctx = canvas.getContext("2d");
+var rc = rough.canvas(canvas);
 rootElement.appendChild(canvas);
 
-var PLAYER_START_X = 10;
-var PLAYER_START_Y = 10;
+var PLAYER_START_X = 20;
+var PLAYER_START_Y = 20;
 var PLAYER_WIDTH = 10;
 var PLAYER_HEIGHT = 40;
-var PLAYER_TERMINAL_SPEED = 15;
-var PLAYER_SPEED = 5;
-var PLAYER_UPWARD_GRAVITY = 2;
-var PLAYER_DOWNWARD_GRAVITY = 6;
+var PLAYER_TERMINAL_SPEED = 25;
+var PLAYER_MAX_SPEED = 7;
+var PLAYER_ACCELERATION = 1;
+var PLAYER_DEACCELERATION = 2;
+var PLAYER_UPWARD_GRAVITY = 3;
+var PLAYER_DOWNWARD_GRAVITY = 10;
+var MAX_DOUBLE_JUMP = 1;
+var PLAYER_JUMP_IMPACT = 25;
 
 var player = {
   x: PLAYER_START_X,
@@ -25,6 +33,8 @@ var player = {
   falling: true,
   movingLeft: false,
   movingRight: false,
+  doubleJump: MAX_DOUBLE_JUMP,
+  speedX: 0,
   speedY: 0
 };
 var ground = [];
@@ -34,14 +44,6 @@ function init() {
 }
 
 function initGround() {
-  ground.push({
-    x: 0,
-    y: CANVAS_HEIGHT - 10,
-    width: CANVAS_WIDTH,
-    height: 10,
-    color: "green"
-  });
-
   ground.push({
     x: 200,
     y: CANVAS_HEIGHT - 85,
@@ -73,23 +75,113 @@ function initGround() {
     height: 10,
     color: "orange"
   });
+
+  ground.push({
+    x: 500,
+    y: CANVAS_HEIGHT - 310,
+    width: 20,
+    height: 20,
+    color: "lightblue"
+  });
+
+  ground.push({
+    x: 550,
+    y: CANVAS_HEIGHT - 310,
+    width: 20,
+    height: 20,
+    color: "lightblue"
+  });
+
+  ground.push({
+    x: 600,
+    y: CANVAS_HEIGHT - 310,
+    width: 20,
+    height: 20,
+    color: "lightblue"
+  });
+
+  ground.push({
+    x: 650,
+    y: CANVAS_HEIGHT - 360,
+    width: 20,
+    height: 20,
+    color: "lightblue"
+  });
+
+  ground.push({
+    x: 700,
+    y: CANVAS_HEIGHT - 360,
+    width: 20,
+    height: 20,
+    color: "lightblue"
+  });
+
+  ground.push({
+    x: 750,
+    y: CANVAS_HEIGHT - 360,
+    width: 20,
+    height: 20,
+    color: "lightblue"
+  });
+
+  ground.push({
+    x: 600,
+    y: CANVAS_HEIGHT - 510,
+    width: 100,
+    height: 10,
+    color: "orange"
+  });
+
+  ground.push({
+    x: 0,
+    y: 0,
+    width: CANVAS_WIDTH,
+    height: 10,
+    color: "green"
+  });
+
+  ground.push({
+    x: 0,
+    y: CANVAS_HEIGHT - 10,
+    width: CANVAS_WIDTH,
+    height: 10,
+    color: "green"
+  });
 }
 
-function render() {
+function render(prevPlayer, player, t) {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  renderPlayer();
+  rc.rectangle(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, {
+    fill: "lightgray",
+    flllWeight: 1,
+    roughness: 0,
+    hachureAngle: 60,
+    hachureGap: 10,
+    strokeWidth: 0.25
+  });
+  renderPlayer(prevPlayer, player, t);
   renderGround();
 }
 
-function renderPlayer() {
-  ctx.fillStyle = "red";
-  ctx.fillRect(player.x, player.y, player.width, player.height);
+function renderPlayer(prevPlayer, player, t) {
+  var x = prevPlayer ? prevPlayer.x + (player.x - prevPlayer.x) * t : player.x;
+  var y = prevPlayer ? prevPlayer.y + (player.y - prevPlayer.y) * t : player.y;
+  rc.rectangle(x, y, player.width, player.height, {
+    fill: "red",
+    roughness: 0
+  });
+  // ctx.fillStyle = "red";
+  // ctx.fillRect(x, y, player.width, player.height);
 }
 
 function renderGround() {
   for (var i = 0; i < ground.length; ++i) {
-    ctx.fillStyle = ground[i].color;
-    ctx.fillRect(ground[i].x, ground[i].y, ground[i].width, ground[i].height);
+    rc.rectangle(ground[i].x, ground[i].y, ground[i].width, ground[i].height, {
+      fill: ground[i].color,
+      roughness: 0
+    });
+    // ctx.fillStyle = ground[i].color;
+    // ctx.fillRect(ground[i].x, ground[i].y, ground[i].width, ground[i].height);
   }
 }
 
@@ -108,29 +200,53 @@ function updatePlayer() {
     }
     player.y += player.speedY;
     if (collidesWithGround(player)) {
-      player.falling = false;
-      player.speedY = 0;
-      while (collidesWithGround(player)) {
-        player.y -= 1;
+      fixPlayerCollisonY();
+      if (player.speedY > 0) {
+        player.falling = false;
+        player.doubleJump = MAX_DOUBLE_JUMP;
       }
+      player.speedY = 0;
     }
   }
 
   if (player.movingLeft) {
-    player.x -= PLAYER_SPEED;
-    if (player.x < 0) {
-      player.x = 0;
+    player.speedX -= PLAYER_ACCELERATION;
+    if (player.speedX < -PLAYER_MAX_SPEED) {
+      player.speedX = -PLAYER_MAX_SPEED;
     }
-    checkFalling();
+  } else {
+    if (player.speedX < 0) {
+      player.speedX += PLAYER_DEACCELERATION;
+      if (player.speedX > 0) {
+        player.speedX = 0;
+      }
+    }
   }
 
   if (player.movingRight) {
-    player.x += PLAYER_SPEED;
-    if (player.x + player.width > CANVAS_WIDTH) {
-      player.x = CANVAS_WIDTH - player.width;
+    player.speedX += PLAYER_ACCELERATION;
+    if (player.speedX > PLAYER_MAX_SPEED) {
+      player.speedX = PLAYER_MAX_SPEED;
     }
-    checkFalling();
+  } else {
+    if (player.speedX > 0) {
+      player.speedX -= PLAYER_DEACCELERATION;
+      if (player.speedX < 0) {
+        player.speedX = 0;
+      }
+    }
   }
+
+  player.x += player.speedX;
+  if (player.x < 0) {
+    player.x = 0;
+  }
+  if (player.x + player.width > CANVAS_WIDTH) {
+    player.x = CANVAS_WIDTH - player.width;
+  }
+  checkFalling();
+
+  fixPlayerCollisonX();
 }
 
 function checkFalling() {
@@ -142,6 +258,28 @@ function checkFalling() {
   };
   if (!collidesWithGround(playerFallTestRect)) {
     player.falling = true;
+  }
+}
+
+function fixPlayerCollisonY() {
+  while (collidesWithGround(player)) {
+    player.y += -getNumberSign(player.speedY);
+  }
+}
+
+function fixPlayerCollisonX() {
+  while (collidesWithGround(player)) {
+    player.x += player.movingLeft ? 1 : -1;
+  }
+}
+
+function getNumberSign(speed) {
+  if (speed > 0) {
+    return 1;
+  } else if (speed < 0) {
+    return -1;
+  } else {
+    return 0;
   }
 }
 
@@ -170,14 +308,19 @@ function collidesWithRect(rect1, rect2) {
 
 function playerJump() {
   if (!player.falling) {
-    player.speedY = -20;
+    player.speedY = -PLAYER_JUMP_IMPACT;
     player.falling = true;
+  } else if (player.doubleJump > 0) {
+    player.speedY = -PLAYER_JUMP_IMPACT;
+    player.doubleJump -= 1;
   }
 }
 
+var blockJump = false;
 document.body.addEventListener("keydown", function(e) {
-  if (e.key === "ArrowUp") {
+  if (!blockJump && (e.key === "ArrowUp" || e.key === " ")) {
     playerJump();
+    blockJump = true;
   } else if (e.key === "ArrowLeft") {
     player.movingLeft = true;
   } else if (e.key === "ArrowRight") {
@@ -186,7 +329,9 @@ document.body.addEventListener("keydown", function(e) {
 });
 
 document.body.addEventListener("keyup", function(e) {
-  if (e.key === "ArrowLeft") {
+  if (e.key === "ArrowUp" || e.key === " ") {
+    blockJump = false;
+  } else if (e.key === "ArrowLeft") {
     player.movingLeft = false;
   } else if (e.key === "ArrowRight") {
     player.movingRight = false;
@@ -194,8 +339,16 @@ document.body.addEventListener("keyup", function(e) {
 });
 
 init();
-render();
+render(null, player);
+var lastUpdate = Date.now();
+var TIME_PER_UPDATE = 50;
+var prevPlayer = null;
 setInterval(function() {
-  update();
-  render();
-}, 50);
+  var now = Date.now();
+  if (now - lastUpdate > TIME_PER_UPDATE) {
+    prevPlayer = Object.assign({}, player);
+    update();
+    lastUpdate = now;
+  }
+  render(prevPlayer, player, (now - lastUpdate) / TIME_PER_UPDATE);
+}, 0);
